@@ -8,6 +8,7 @@ use std::time::{Duration, SystemTime};
 use std::thread::sleep;
 use postgres::{Connection, TlsMode, Error};
 use std::env;
+use std::vec;
 
 fn main() {
   let conn = Connection::connect(
@@ -29,12 +30,9 @@ fn main() {
 
 
   let mut resp = reqwest::get("https://pastebin.com/archive").unwrap();
-  assert!(resp.status().is_success());
 
   let body = resp.text().unwrap();
-  // parses string of HTML as a document
   let fragment = Html::parse_document(&body);
-  // parses based on a CSS selector
   let table_selector = Selector::parse(".maintable").unwrap();
   let link_selector = Selector::parse("a").unwrap();
 
@@ -44,11 +42,28 @@ fn main() {
     .filter_map(|e| e.value().attr("href"))
     .filter(|s| s[1..].len() == 8);
 
-  for url in paste_urls {
-    let paste_url = format!("https://pastebin.com/raw{}", url);
+  let precheck_urls_query = format!(
+    "with temp(paste_id) as (values {})
+    select temp.paste_id from temp
+    left join pastes
+      on temp.paste_id = pastes.paste_id
+    where pastes.paste_id is null",
+    paste_urls
+      .map(|s| format!("(\'https://pastebin.com/raw{}\')", s))
+      .collect::<Vec<_>>()
+      .join(", ")
+    );
+
+  for url in &conn.query(&precheck_urls_query, &[]).unwrap() {
+    let uri: String = url.get(0);
+    let paste_url = format!("https://pastebin.com/raw{}", uri);
     let paste_text = reqwest::get(&paste_url).unwrap().text().unwrap();
 
-    conn.execute("INSERT INTO pastes (paste_id, paste_key, dtstamp) VALUES ($1, $2, now()) ON CONFLICT DO NOTHING",
+    conn.execute("
+      INSERT INTO 
+      pastes (paste_id, paste_key, dtstamp)
+      VALUES ($1, $2, now())
+      ON CONFLICT DO NOTHING",
       &[&paste_url, &paste_text]).unwrap();
 
     sleep(Duration::new(1, 0));
