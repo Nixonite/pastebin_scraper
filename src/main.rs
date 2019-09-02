@@ -66,6 +66,6 @@ fn main() {
       ON CONFLICT DO NOTHING",
       &[&paste_url, &paste_text]).unwrap();
 
-    sleep(Duration::new(1, 0));
+    sleep(Duration::new(4, 0));
   }
 }
