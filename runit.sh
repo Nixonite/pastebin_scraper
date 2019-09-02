@@ -1,0 +1,1 @@
+source db.env && cargo build --release && ./target/release/app
